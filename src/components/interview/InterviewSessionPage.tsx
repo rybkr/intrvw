@@ -1,6 +1,10 @@
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db/schema';
+import { useInterviewSession } from '@/hooks/useInterviewSession';
+import { useInterviewStore } from '@/hooks/stores/interviewStore';
+import { useModelStore } from '@/hooks/stores/modelStore';
 
 export default function InterviewSessionPage() {
   const { interviewId } = useParams<{ interviewId: string }>();
@@ -10,16 +14,50 @@ export default function InterviewSessionPage() {
     [interviewId],
   );
 
-  const messages = useLiveQuery(
+  const opts = useMemo(
     () =>
-      interviewId
-        ? db.messages
-            .where('[interviewId+sequenceNumber]')
-            .between([interviewId, 0], [interviewId, Infinity])
-            .toArray()
-        : [],
-    [interviewId],
+      interviewId && interview
+        ? { interviewId, interview }
+        : null,
+    [interviewId, interview],
   );
+
+  const { sendText, startRecording, stopRecording, isGenerating } =
+    useInterviewSession(opts);
+
+  const messages = useInterviewStore((s) => s.messages);
+  const elapsedSeconds = useInterviewStore((s) => s.elapsedSeconds);
+  const pttState = useInterviewStore((s) => s.pttState);
+  const serverStatus = useModelStore((s) => s.serverStatus);
+
+  const [inputText, setInputText] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const inputDisabled = isGenerating || serverStatus !== 'connected';
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages.length]);
+
+  function handleSend() {
+    if (!inputText.trim() || inputDisabled) return;
+    sendText(inputText);
+    setInputText('');
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
+  function formatTime(seconds: number): string {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  }
 
   if (!interview) {
     return (
@@ -67,7 +105,31 @@ export default function InterviewSessionPage() {
               {interview.type} &middot; {interview.difficulty}
             </span>
           </div>
+          <span
+            style={{
+              fontSize: 'var(--text-sm)',
+              fontVariantNumeric: 'tabular-nums',
+              color: 'var(--color-text-secondary)',
+            }}
+          >
+            {formatTime(elapsedSeconds)}
+          </span>
         </div>
+
+        {/* Server disconnected banner */}
+        {serverStatus !== 'connected' && (
+          <div
+            style={{
+              padding: 'var(--space-2) var(--space-4)',
+              backgroundColor: 'var(--color-warning-subtle, #fefce8)',
+              color: 'var(--color-warning, #854d0e)',
+              fontSize: 'var(--text-sm)',
+              textAlign: 'center',
+            }}
+          >
+            Server disconnected — reconnecting...
+          </div>
+        )}
 
         {/* Messages */}
         <div
@@ -80,7 +142,7 @@ export default function InterviewSessionPage() {
             gap: 'var(--space-3)',
           }}
         >
-          {messages?.map((msg) => (
+          {messages.map((msg) => (
             <div
               key={msg.id}
               style={{
@@ -97,12 +159,26 @@ export default function InterviewSessionPage() {
                   msg.role === 'candidate'
                     ? 'var(--color-text-inverse)'
                     : 'var(--color-text-primary)',
+                whiteSpace: 'pre-wrap',
               }}
             >
               {msg.content}
+              {msg.isStreaming && (
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: 6,
+                    height: '1em',
+                    marginLeft: 2,
+                    backgroundColor: 'currentColor',
+                    animation: 'blink 1s step-end infinite',
+                    verticalAlign: 'text-bottom',
+                  }}
+                />
+              )}
             </div>
           ))}
-          {(!messages || messages.length === 0) && (
+          {messages.length === 0 && serverStatus === 'connected' && (
             <div
               style={{
                 textAlign: 'center',
@@ -110,9 +186,10 @@ export default function InterviewSessionPage() {
                 padding: 'var(--space-8)',
               }}
             >
-              Interview starting... Press the microphone button or type to begin.
+              Starting interview...
             </div>
           )}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input Area */}
@@ -127,29 +204,55 @@ export default function InterviewSessionPage() {
         >
           <input
             type="text"
-            placeholder="Type your response..."
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={inputDisabled}
+            placeholder={
+              inputDisabled
+                ? isGenerating
+                  ? 'Waiting for response...'
+                  : 'Server disconnected...'
+                : 'Type your response...'
+            }
             style={{
               flex: 1,
               padding: 'var(--space-2) var(--space-3)',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--color-border)',
               backgroundColor: 'var(--color-bg-surface)',
+              opacity: inputDisabled ? 0.6 : 1,
             }}
           />
           <button
+            onMouseDown={(e) => {
+              e.preventDefault();
+              startRecording();
+            }}
+            onMouseUp={stopRecording}
+            onMouseLeave={() => {
+              if (pttState === 'recording') stopRecording();
+            }}
+            disabled={inputDisabled}
             style={{
               width: 48,
               height: 48,
               borderRadius: 'var(--radius-full)',
-              backgroundColor: 'var(--color-bg-tertiary)',
+              backgroundColor:
+                pttState === 'recording'
+                  ? 'var(--color-error, #e53e3e)'
+                  : 'var(--color-bg-tertiary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: 'var(--text-xl)',
+              opacity: inputDisabled ? 0.6 : 1,
+              cursor: inputDisabled ? 'not-allowed' : 'pointer',
+              transition: 'background-color var(--transition-fast)',
             }}
             title="Push to talk (hold Space)"
           >
-            🎤
+            {pttState === 'processing' ? '...' : '🎤'}
           </button>
         </div>
       </div>
@@ -169,6 +272,13 @@ export default function InterviewSessionPage() {
           Excalidraw whiteboard will be mounted here
         </div>
       )}
+
+      {/* Streaming cursor blink animation */}
+      <style>{`
+        @keyframes blink {
+          50% { opacity: 0; }
+        }
+      `}</style>
     </div>
   );
 }

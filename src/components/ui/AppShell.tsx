@@ -1,6 +1,9 @@
 import { Outlet, NavLink } from 'react-router-dom';
+import { useTrillim } from '@/hooks/useTrillim';
 
 export function AppShell() {
+  useTrillim();
+
   return (
     <div
       style={{

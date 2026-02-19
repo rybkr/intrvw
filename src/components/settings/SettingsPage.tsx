@@ -1,6 +1,6 @@
 import { useSettingsStore } from '@/hooks/stores/settingsStore';
 import { useModelStore } from '@/hooks/stores/modelStore';
-import { useTrillim } from '@/hooks/useTrillim';
+import { getReconnect } from '@/hooks/useTrillim';
 
 export default function SettingsPage() {
   const theme = useSettingsStore((s) => s.theme);
@@ -15,7 +15,7 @@ export default function SettingsPage() {
   const activeModel = useModelStore((s) => s.activeModel);
   const availableVoices = useModelStore((s) => s.availableVoices);
 
-  const { reconnect } = useTrillim();
+  const reconnect = getReconnect();
 
   const statusColor =
     serverStatus === 'connected'
@@ -105,7 +105,7 @@ export default function SettingsPage() {
                   </code>
                 </p>
                 <button
-                  onClick={reconnect}
+                  onClick={() => reconnect?.()}
                   style={{
                     padding: 'var(--space-2) var(--space-4)',
                     backgroundColor: 'var(--color-accent)',

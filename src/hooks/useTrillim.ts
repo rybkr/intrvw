@@ -4,6 +4,20 @@ import { useModelStore } from '@/hooks/stores/modelStore';
 
 const RECONNECT_INTERVAL = 5_000;
 
+// Module-scope shared refs — set by whichever component calls useTrillim()
+let sharedBridge: React.RefObject<RuntimeBridge | null> | null = null;
+let sharedReconnect: (() => void) | null = null;
+
+/** Get the RuntimeBridge instance (null if not yet connected) */
+export function getBridge(): RuntimeBridge | null {
+  return sharedBridge?.current ?? null;
+}
+
+/** Get the reconnect callback (null if useTrillim hasn't mounted) */
+export function getReconnect(): (() => void) | null {
+  return sharedReconnect;
+}
+
 export function useTrillim() {
   const bridgeRef = useRef<RuntimeBridge | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -65,6 +79,10 @@ export function useTrillim() {
     }
     connect();
   }, [connect]);
+
+  // Publish to module scope so non-hook code can access
+  sharedBridge = bridgeRef;
+  sharedReconnect = reconnect;
 
   useEffect(() => {
     connect();
