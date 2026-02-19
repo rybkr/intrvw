@@ -1,0 +1,27 @@
+node_modules
+dist
+*.local
+.env
+.env.*
+!.env.example
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage
+test-results
+playwright-report
+
+# Python server
+server/__pycache__
+server/.venv
+server/*.egg-info

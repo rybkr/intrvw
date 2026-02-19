@@ -1,0 +1,32 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { fileURLToPath, URL } from 'node:url';
+
+export default defineConfig({
+  plugins: [react()],
+
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@content': fileURLToPath(new URL('./content', import.meta.url)),
+    },
+  },
+
+  server: {
+    proxy: {
+      '/v1': 'http://localhost:8000',
+    },
+  },
+
+  build: {
+    target: 'esnext',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          excalidraw: ['@excalidraw/excalidraw'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 2000,
+  },
+});
